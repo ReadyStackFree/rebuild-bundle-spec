@@ -14,7 +14,8 @@ transparency log (Rekor). They are stored in cosign's attachment format, a `sha2
 Releases published before 2026-10-20 carry the first two only: the release gate ran before this policy was published, so
 there is no VSA to sign for them. A release whose archive holds no record that binds it to the published image (some
 releases made before the current release engine) carries no provenance, because ReadyStack does not write provenance
-it cannot support from a record.
+it cannot support from a record. An SBOM larger than 12 MB is not attached this way, because the public transparency
+log does not accept an entry that large; it stays attached inside the image index, where BuildKit put it.
 
 ## Verify
 
