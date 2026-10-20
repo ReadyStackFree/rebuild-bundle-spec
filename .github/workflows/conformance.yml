@@ -1,0 +1,51 @@
+name: conformance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: verify ${{ matrix.bundle }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        bundle: [hello]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cosign v3.0.5 (checksum from the cosign release)
+        run: |
+          curl -fsSLo cosign https://github.com/sigstore/cosign/releases/download/v3.0.5/cosign-linux-amd64
+          echo "db15cc99e6e4837daabab023742aaddc3841ce57f193d11b7c3e06c8003642b2  cosign" | sha256sum -c -
+          sudo install -m 0755 cosign /usr/local/bin/cosign
+      - name: Download the bundle and its detached signature
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.1.0 -R "${{ github.repository }}" \
+            -p "${{ matrix.bundle }}.bundle.tar.gz" -p "${{ matrix.bundle }}.rebuild.json.sigstore"
+          sha256sum "${{ matrix.bundle }}.bundle.tar.gz"
+      - name: Extract (file modes kept)
+        run: mkdir b && tar -xpzf "${{ matrix.bundle }}.bundle.tar.gz" -C b && ls b
+      - name: Host
+        run: |
+          uname -srm; nproc; free -g | head -2
+          docker version --format 'docker {{.Server.Version}}'; docker buildx version
+      - name: Validate
+        run: |
+          d=$(ls -d b/*/)
+          python3 tools/rebuild_bundle.py validate "$d" --key conformance/conformance.pub \
+            --signature "${{ matrix.bundle }}.rebuild.json.sigstore"
+      - name: Verify (rebuild with no network, compare digests)
+        run: |
+          d=$(ls -d b/*/)
+          python3 tools/rebuild_bundle.py verify "$d" --key conformance/conformance.pub \
+            --signature "${{ matrix.bundle }}.rebuild.json.sigstore" --isolate container --result result.json
+      - name: Result
+        if: always()
+        run: cat result.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result-${{ matrix.bundle }}
+          path: result.json

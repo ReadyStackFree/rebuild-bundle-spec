@@ -1,0 +1,6 @@
+# never commit keys or credentials
+*.key
+credentials/
+*.bundle.tar.gz
+*.sigstore
+result*.json

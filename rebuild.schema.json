@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://readystack.dev/specs/readystack-rebuild-bundle/v0.1/rebuild.schema.json",
+  "title": "ReadyStack Rebuild Bundle manifest (rebuild.json), v0.1 draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "subject", "engine", "inputs", "bases"],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "relpath": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"}
+  },
+  "properties": {
+    "schema": {"const": "readystack-rebuild-bundle/v0.1"},
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["image_manifest_digest"],
+      "properties": {
+        "image_manifest_digest": {"$ref": "#/$defs/digest", "description": "X: the linux/amd64 image-manifest digest"},
+        "config_digest": {"$ref": "#/$defs/digest"},
+        "name": {"type": "string", "description": "registry/repository:tag, for optional online tag binding"}
+      }
+    },
+    "engine": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "image_digest", "archive"],
+      "properties": {
+        "kind": {"enum": ["buildkit"]},
+        "image_digest": {"$ref": "#/$defs/digest"},
+        "archive": {"$ref": "#/$defs/relpath"},
+        "tag": {"type": "string", "description": "informational upstream name of the builder"}
+      }
+    },
+    "inputs": {
+      "type": "object", "additionalProperties": false,
+      "required": ["context", "dockerfile", "source_date_epoch", "tree_hash", "mtime_policy"],
+      "properties": {
+        "context": {"type": "string", "description": "context root relative to the bundle; '.' for the bundle root"},
+        "dockerfile": {"$ref": "#/$defs/relpath"},
+        "source_date_epoch": {"type": "integer", "minimum": 1},
+        "tree_hash": {"$ref": "#/$defs/digest"},
+        "mtime_policy": {"enum": ["clamp"]}
+      }
+    },
+    "bases": {
+      "type": "array", "minItems": 0,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["ref", "layout", "digest"],
+        "properties": {
+          "ref": {"type": "string", "description": "the FROM reference exactly as the Dockerfile writes it"},
+          "layout": {"$ref": "#/$defs/relpath"},
+          "digest": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    "build_args": {"type": "object", "additionalProperties": {"type": "string"}},
+    "probe": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "http_path": {"type": "string", "pattern": "^/"},
+        "exec": {"type": "string"},
+        "timeout_s": {"type": "integer", "minimum": 1},
+        "env": {"type": "object", "additionalProperties": {"type": "string"}},
+        "secrets": {"type": "array", "items": {"type": "string"}},
+        "skip": {"type": "string", "minLength": 1, "description": "why booting needs services the bundle does not contain"}
+      },
+      "oneOf": [
+        {"required": ["skip"], "not": {"anyOf": [{"required": ["port"]}, {"required": ["exec"]}]}},
+        {"required": ["port", "http_path"], "not": {"required": ["skip"]}},
+        {"required": ["exec"], "not": {"required": ["skip"]}}
+      ]
+    }
+  }
+}
