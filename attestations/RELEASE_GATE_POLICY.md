@@ -7,8 +7,8 @@ in the VSA's `policy.digest`. The VSA format is <https://slsa.dev/spec/v1.0/veri
 ## Verifier
 
 `verifier.id` is `https://readystack.dev/verifiers/release-gate-g8/v1`: ReadyStack's release gate, which runs once per
-release, against the image digest being published and the archive being sold beside it, before either is published.
-A release that fails any check below is not published, so every VSA ReadyStack signs says `PASSED`.
+release, against the image digest being published and the release archive published beside it, before either is
+published. A release that fails any check below is not published, so every VSA ReadyStack signs says `PASSED`.
 
 ## What the gate checks
 
@@ -27,7 +27,7 @@ A release that fails any check below is not published, so every VSA ReadyStack s
 6. **Scan grade.** The image grades A on ReadyStack's own scan (a syft SBOM and grype matches scored with ce.rodeo's
    published rubric `cerodeo-v1`), measured at publish on the digest being published.
 7. **Base OS.** The release tag's base-OS segment names the operating system the scan found in the image.
-8. **Offline rebuild.** The archive being sold is rebuilt with the network disabled (`--network=none`). For a
+8. **Offline rebuild.** The release archive is rebuilt with the network disabled (`--network=none`). For a
    reproducible archive the rebuilt linux/amd64 image digest must equal the published one, the customer's own
    `VERIFY_OFFLINE.sh` must pass, and the rebuilt image must boot and pass its health check (or the archive records why
    it cannot boot on its own). A passed rebuild of a byte-identical kit within the previous 14 days may stand in for a
