@@ -59,5 +59,5 @@ ReadyStack's own tooling, and so that other publishers can produce bundles of th
 
 Draft v0.1 (2026-10-08). Two conformance bundles were verified on a GitHub-hosted runner on 2026-10-07: the sample in
 [conformance/](conformance/) and a production ReadyStack image (caddy v2.11.4-CE-ubuntu24.04-r2, rebuilt to its
-published digest `sha256:0772d95e…`; that bundle is a paid ReadyStack archive and is not published here). Issues and
-pull requests are welcome.
+published digest `sha256:0772d95e…`; that bundle is the ReadyStack release archive, a free download for any registered
+ReadyStack account, and is not copied here). Issues and pull requests are welcome.
