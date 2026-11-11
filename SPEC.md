@@ -65,7 +65,7 @@ JSON, validated by `rebuild.schema.json`. Fields (all required unless marked):
 | `inputs.mtime_policy` | `"clamp"`: before building, every context mtime later than `source_date_epoch` is set to it; earlier mtimes are kept. A verifier applies this itself, so the bundle's tar recipe cannot change the result |
 | `bases[]` | `{ref, layout, digest}`: each `FROM` reference, the OCI layout that satisfies it, and the digest that layout must hold; empty for a `FROM scratch` image |
 | `build_args` *(optional)* | name → value, all non-secret |
-| `probe` *(optional)* | how to boot the rebuilt image to show it runs: `{port, http_path}` or `{exec}`, `timeout_s` (≥ 180 recommended), `env`, `secrets` (names; generated at verify time), or `{skip: "<reason>"}` when it needs services the bundle does not contain |
+| `probe` *(optional)* | how to boot the rebuilt image to show it runs: `{port, http_path}` or `{exec}`, `timeout_s` (≥ 180 recommended), `env`, `secrets` (names; generated at verify time), or `{skip: "<reason>"}` when it needs services the bundle does not contain, or `{oneshot: {args, expect}}` for a component that runs only inside a cluster (a Kubernetes or KubeVirt part): one run of the image with `args` (1-8 one-line strings), no network, which must exit 0 within 300 s and print `expect` |
 
 ## 5. Trust root
 
@@ -82,7 +82,9 @@ binds every other file to `rebuild.json` through `inputs.tree_hash`, `bases[].di
 3. **rebuild** — apply `mtime_policy`; build `inputs.dockerfile` in `inputs.context` with the pinned engine, bases
    from their OCI layouts, `SOURCE_DATE_EPOCH` set and layer timestamps rewritten to it, no cache, linux/amd64.
 4. **compare** — the rebuilt image-manifest digest equals `subject.image_manifest_digest`. Nothing else counts.
-5. **boot** *(optional)* — per `probe`; a `skip` is reported with its reason, not as a pass.
+5. **boot** *(optional)* — per `probe`; a `skip` is reported with its reason, not as a pass. A `oneshot` is one run, not
+   a boot: `docker run --rm --network none <image> <args...>`, exit 0 within 300 s and `expect` in its output. A verifier
+   that does not run the boot step reports which check it did not run ("not booted: one-shot check"), never a pass.
 6. **bind** *(optional, `--online`)* — `subject.name` currently resolves to X on its registry.
 
 Exit status of the reference verifier (`rebuild_bundle.py verify`): 0 verified (bit-for-bit and isolation proven);

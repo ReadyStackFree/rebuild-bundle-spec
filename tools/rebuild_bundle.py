@@ -116,6 +116,60 @@ def tree_hash_tar(tar_path, top) -> str:
     return "sha256:" + h.hexdigest()
 
 
+def _listed(path):
+    try:
+        return [ln for ln in open(path, errors="surrogateescape").read().splitlines() if ln]
+    except OSError:
+        return None
+
+
+def tree_diagnosis(root) -> str:
+    """Why the tree does not hash to rebuild.json's tree_hash, in words a customer can act on. The archive's own listings
+    say what it held: MANIFEST.txt every regular file, FILE_MODES.tsv (when the archive has one) every file's and
+    directory's mode as packed. 2026-11-11: an outside rebuild was refused twice with only "extract with tar -xpf": once
+    for modes its umask changed, and REBUILD.md's own `curl -fsSLO cosign.pub` inside the kit adds a file the tree hash
+    counts."""
+    why = []
+    listed = _listed(os.path.join(root, "MANIFEST.txt"))
+    if listed is not None:
+        listed = {(x[2:] if x.startswith("./") else x) for x in listed}
+        present = set()
+        for dp, dns, fns in os.walk(root):
+            for fn in fns:
+                p = os.path.join(dp, fn)
+                if not os.path.islink(p):
+                    present.add(os.path.relpath(p, root).replace(os.sep, "/"))
+        extra = sorted(present - listed - set(NOT_IN_TREE) - set(FORBIDDEN_FILES))
+        missing = sorted(listed - present - set(NOT_IN_TREE))
+        if extra:
+            why.append(f"{len(extra)} file(s) the archive did not hold, e.g. {extra[:3]}: keep files you add (a key, a "
+                       "signature, a build output) outside the kit directory")
+        if missing:
+            why.append(f"{len(missing)} file(s) of the archive are missing, e.g. {missing[:3]}")
+    modes = _listed(os.path.join(root, "FILE_MODES.tsv"))
+    if modes is not None:
+        changed = []
+        for ln in modes:
+            m, _, rel = ln.partition("\t")
+            if not rel or not m.isdigit():
+                continue
+            try:
+                now = stat.S_IMODE(os.lstat(os.path.join(root, rel)).st_mode)
+            except OSError:
+                continue
+            if f"{now:o}" != m:
+                changed.append(f"{rel} ({m}, now {now:o})")
+        if changed:
+            why.append(f"{len(changed)} file mode(s) differ from FILE_MODES.tsv, e.g. {changed[:3]}: the archive was "
+                       "unpacked without `tar -p`; run ./BUILD_OFFLINE.sh --restore-modes, or unpack it again with "
+                       "`tar -xpzf`")
+    elif not why:
+        why.append("file modes may differ from the archive's: unpack it again with `tar -xpzf`, which keeps them")
+    if not why:
+        why.append("every file is listed and every mode matches: a file's content changed (see CHECKSUMS.sha256)")
+    return "; ".join(why)
+
+
 # ---------------------------------------------------------------------------------------------- facts
 def builder_config_digest(archive) -> tuple[str, str | None]:
     """(config digest, first RepoTag) of the single image in a `docker save` / OCI image archive."""
@@ -188,8 +242,14 @@ def make(root) -> dict:
             probe.setdefault("secrets", []).append(v)
         elif k == "verify_boot_reason":
             probe["skip"] = v
+        elif k == "verify_oneshot_arg":      # a cluster component's one-run check (release/component_boot.py)
+            probe.setdefault("oneshot", {}).setdefault("args", []).append(v)
+        elif k == "verify_oneshot_expect":
+            probe.setdefault("oneshot", {})["expect"] = v
     if "skip" in probe:
         probe = {"skip": probe["skip"]}
+    elif "oneshot" in probe:
+        probe = {"oneshot": probe["oneshot"]}
     elif "exec" in probe:
         probe.pop("http_path", None)
     if probe:
@@ -201,7 +261,8 @@ def make(root) -> dict:
 def _check_signature(root, key, signature):
     sig = signature or os.path.join(root, "rebuild.json.sigstore")
     if not os.path.exists(sig):
-        return False, f"no signature ({sig})"
+        return False, (f"no signature at {sig}: download the release's .rebuild.json.sigstore next to the kit directory "
+                       "(README.md gives its address) and name it with --signature")
     cosign = shutil.which("cosign")
     if not cosign:
         return False, "cosign not installed: the signature cannot be checked"
@@ -248,8 +309,7 @@ def validate(root, key=None, signature=None) -> list:
                 errs.append(f"forbidden file in the bundle: {rel}")
     th = tree_hash(root)
     if th != doc["inputs"].get("tree_hash"):
-        errs.append(f"tree hash {th} != rebuild.json {doc['inputs'].get('tree_hash')} "
-                    "(extract with `tar -xpf` so file modes are kept)")
+        errs.append(f"tree hash {th} != rebuild.json {doc['inputs'].get('tree_hash')}: {tree_diagnosis(root)}")
     for b in doc.get("bases") or []:
         try:
             got = layout_digest(j(b["layout"]))
@@ -310,6 +370,25 @@ def _clamp_mtimes(root, sde):
     return n
 
 
+def boot_report(probe) -> dict:
+    """SPEC §6 step 5 (boot, optional) as this verifier reports it. It does not boot the rebuilt image (the archive's
+    VERIFY_OFFLINE.sh does), so the report names the check the bundle declares and says it was not run here: a skip with
+    its reason, a cluster component's one-shot check (one run of the image, no network, exit 0 and the expected text),
+    or a service probe. Never a pass."""
+    p = probe or {}
+    if "skip" in p:
+        return {"performed": False, "kind": "skip", "result": f"not booted: {p['skip']}"}
+    if "oneshot" in p:
+        o = p["oneshot"] or {}
+        return {"performed": False, "kind": "oneshot",
+                "result": f"not booted: one-shot check (`{' '.join(o.get('args') or [])}` must exit 0 and print "
+                          f"{o.get('expect')!r}, network off; VERIFY_OFFLINE.sh runs it)"}
+    if p:
+        return {"performed": False, "kind": "exec" if "exec" in p else "http",
+                "result": "not booted: this verifier does not run the optional boot step (VERIFY_OFFLINE.sh does)"}
+    return {"performed": False, "kind": None, "result": "no probe declared"}
+
+
 def verify(root, key=None, signature=None, isolate="container", log=print) -> dict:
     res = {"spec": SCHEMA, "bundle": os.path.abspath(root), "verified": False, "isolation": isolate,
            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -323,6 +402,7 @@ def verify(root, key=None, signature=None, isolate="container", log=print) -> di
     want = doc["subject"]["image_manifest_digest"]
     sde = int(doc["inputs"]["source_date_epoch"])
     res["subject"] = want
+    res["boot"] = boot_report(doc.get("probe"))
     res["host"]["docker"] = _run(["docker", "version", "-f", "{{.Server.Version}}"]).stdout.strip()
     res["host"]["buildx"] = _run(["docker", "buildx", "version"]).stdout.strip()
     builder = f"rrb-{os.getpid()}"
@@ -385,6 +465,7 @@ def verify(root, key=None, signature=None, isolate="container", log=print) -> di
             res["verified"], res["result"], res["exit"] = True, "verified: bit-for-bit, isolated", 0
         else:
             res["result"], res["exit"] = "digest matches, but the build was NOT isolated (--isolate none)", 3
+        log(f"==> boot: {res['boot']['result']}")
         return res
     finally:
         _run(["docker", "buildx", "rm", builder])

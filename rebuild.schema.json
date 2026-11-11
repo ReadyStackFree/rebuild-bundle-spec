@@ -62,12 +62,23 @@
         "timeout_s": {"type": "integer", "minimum": 1},
         "env": {"type": "object", "additionalProperties": {"type": "string"}},
         "secrets": {"type": "array", "items": {"type": "string"}},
-        "skip": {"type": "string", "minLength": 1, "description": "why booting needs services the bundle does not contain"}
+        "skip": {"type": "string", "minLength": 1, "description": "why booting needs services the bundle does not contain"},
+        "oneshot": {
+          "type": "object", "additionalProperties": false, "required": ["args", "expect"],
+          "description": "a cluster component's check: one run of the image with args, no network, exit 0 within 300 s and expect in its output",
+          "properties": {
+            "args": {"type": "array", "minItems": 1, "maxItems": 8,
+                     "items": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\n\\r]*$"}},
+            "expect": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^\\n\\r]*$"}
+          }
+        }
       },
       "oneOf": [
-        {"required": ["skip"], "not": {"anyOf": [{"required": ["port"]}, {"required": ["exec"]}]}},
-        {"required": ["port", "http_path"], "not": {"required": ["skip"]}},
-        {"required": ["exec"], "not": {"required": ["skip"]}}
+        {"required": ["skip"], "not": {"anyOf": [{"required": ["port"]}, {"required": ["exec"]}, {"required": ["oneshot"]}]}},
+        {"required": ["port", "http_path"], "not": {"anyOf": [{"required": ["skip"]}, {"required": ["oneshot"]}]}},
+        {"required": ["exec"], "not": {"anyOf": [{"required": ["skip"]}, {"required": ["oneshot"]}]}},
+        {"required": ["oneshot"], "not": {"anyOf": [{"required": ["skip"]}, {"required": ["port"]}, {"required": ["http_path"]},
+                                                    {"required": ["exec"]}]}}
       ]
     }
   }
