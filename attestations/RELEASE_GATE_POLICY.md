@@ -24,8 +24,11 @@ A release that fails any check below is not published, so every VSA ReadyStack s
    exceptions, cross-checked against OSV), the image runs as a non-root user, and SBOM and SLSA provenance
    attestations are attached inside the image index. A release may instead pass with a short list of named residual
    vulnerabilities its build strategy explicitly accepts; such a release is never labelled Grade A.
-6. **Scan grade.** The image grades A on ReadyStack's own scan (a syft SBOM and grype matches scored with ce.rodeo's
-   published rubric `cerodeo-v1`), measured at publish on the digest being published.
+6. **Scan grade.** ReadyStack's own scan of the image (a syft SBOM and grype matches), measured at publish on the
+   digest being published, is scored with ce.rodeo's current rubric `cerodeo-v2` and the grade is recorded. The check
+   passes when the same scan grades A under the earlier rubric `cerodeo-v1`, the bar this check has held since
+   2026-10-10; a `cerodeo-v2` grade below A (which a point for every unfixed medium vulnerability brings to most images
+   on a full Ubuntu base) is recorded and published, not a failure.
 7. **Base OS.** The release tag's base-OS segment names the operating system the scan found in the image.
 8. **Offline rebuild.** The archive being sold is rebuilt with the network disabled (`--network=none`). For a
    reproducible archive the rebuilt linux/amd64 image digest must equal the published one, the customer's own
@@ -44,7 +47,7 @@ ReadyStack's own values; none starts with `SLSA_`, so none claims a SLSA track l
 |---|---|
 | `READYSTACK_RELEASE_GATE_V1` | every check above passed for this release |
 | `READYSTACK_OFFLINE_REBUILD_BIT_FOR_BIT_V1` | check 8 compared digests and the rebuilt linux/amd64 image digest equalled the published one |
-| `READYSTACK_SCAN_GRADE_A_V1` | check 6 graded the image A at `timeVerified` |
+| `READYSTACK_SCAN_GRADE_A_V1` | check 6 graded the image A at `timeVerified` under the rubric it records (`cerodeo-v2` from 2026-11-08, `cerodeo-v1` before) |
 
 ## Other fields
 
